@@ -1,0 +1,70 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: This template creates an AWS Lambda function and a role with appropriate permissions to decrypt data encrypted by Amazon Connect. Please send comments/feeback to diouc@amazon.com
+Parameters:
+    LambdaLanguageParameter:
+        Description: This supports decryption using Node.js or Python. Please select a language.
+        Type: String
+        Default: NodeJS
+        AllowedValues:
+            - NodeJS
+            - Python
+Mappings:
+    RegionMap:
+        eu-central-1:
+            S3Bucket: cf-templates-90l9eun517zr-eu-central-1
+    LambdaLanguageMap:
+        NodeJS:
+            Runtime: nodejs18.x
+            Handler: index.handler
+            S3Key: creating-a-secure-ivr-solution-with-amazon-connect/DecryptCustomerInputNodeJS.zip
+        Python:
+            Runtime: python3.9
+            Handler: lambda_function.lambda_handler
+            S3Key: creating-a-secure-ivr-solution-with-amazon-connect/DecryptCustomerInputPython.zip
+Resources:
+    LambdaRole:
+        Type: AWS::IAM::Role
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: 2012-10-17
+                Statement:
+                -   Effect: Allow
+                    Principal:
+                        Service:
+                            - lambda.amazonaws.com
+                    Action:
+                        - sts:AssumeRole
+            ManagedPolicyArns:
+                - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+            Policies:
+                -   PolicyName: GetDecryptionParameters
+                    PolicyDocument:
+                        Version: 2012-10-17
+                        Statement:
+                        -   Effect: Allow
+                            Action:
+                                - ssm:GetParameter
+                            Resource:
+                                - !Join
+                                    - ''
+                                    -   - 'arn:aws:ssm:'
+                                        - !Ref 'AWS::Region'
+                                        - ':'
+                                        - !Ref 'AWS::AccountId'
+                                        - ':parameter/CONNECT_INPUT*'
+        DeletionPolicy: Retain
+    DecryptLambda:
+        DependsOn: LambdaRole
+        Type: AWS::Lambda::Function
+        Properties:
+            FunctionName: DecryptCustomerInputV2
+            Description: Decrypts a customer input from Amazon Connect
+            Handler: !FindInMap [LambdaLanguageMap, !Ref LambdaLanguageParameter, Handler]
+            Runtime: !FindInMap [LambdaLanguageMap, !Ref LambdaLanguageParameter, Runtime]
+            Role: !GetAtt LambdaRole.Arn
+            Timeout: 3
+            MemorySize: 1024
+            Code:
+                S3Bucket: !FindInMap [RegionMap, !Ref AWS::Region, S3Bucket]
+                S3Key: !FindInMap [LambdaLanguageMap, !Ref LambdaLanguageParameter, S3Key]
+        DeletionPolicy: Retain
